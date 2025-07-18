@@ -152,6 +152,9 @@ def jeu_arcade(nb_joueurs=1, manette=None):
     ennemis = []
     sprites_ennemis = [sprite_e1, sprite_e2]
     temps_dernier_ennemi = 0
+    interval_ennemi = 1100  # temps initial entre deux vagues
+    vitesse_ennemi = 6
+    debut_jeu = pygame.time.get_ticks()
 
     # --- Explosions animées
     explosions_actives = []  # {"pos": (x, y), "frame": 0}
@@ -163,8 +166,14 @@ def jeu_arcade(nb_joueurs=1, manette=None):
         afficher_planetes(planetes_vivantes)
         afficher_etoiles_parallax(etoiles)
 
-        # Apparition d’un ennemi toutes les 1.1s
-        if pygame.time.get_ticks() - temps_dernier_ennemi > 1100:
+        # Mise à jour difficulté en fonction du temps
+        temps_jeu = pygame.time.get_ticks() - debut_jeu
+        niveau = temps_jeu // 5000
+        interval_ennemi = max(300, 1100 - niveau * 100)
+        vitesse_ennemi = 6 + niveau
+
+        # Apparition d’un ennemi selon l’intervalle courant
+        if pygame.time.get_ticks() - temps_dernier_ennemi > interval_ennemi:
             x = random.randint(0, LARGEUR-56)
             ennemi = pygame.Rect(x, -60, 56, 48)
             ennemis.append(ennemi)
@@ -232,7 +241,7 @@ def jeu_arcade(nb_joueurs=1, manette=None):
 
         # --- Affichage ennemis & collisions
         for i, ennemi in enumerate(list(ennemis)):
-            ennemi.y += 6
+            ennemi.y += vitesse_ennemi
             s = sprites_ennemis[i%2]
             if s:
                 fenetre.blit(s, (ennemi.x, ennemi.y))
@@ -263,6 +272,8 @@ def jeu_arcade(nb_joueurs=1, manette=None):
         font = pygame.font.SysFont("Arial", 28)
         txt = font.render(f"Score J1 : {scores[0]}", True, BLANC)
         fenetre.blit(txt, (16, 12))
+        niveau_txt = font.render(f"Niveau : {niveau+1}", True, BLANC)
+        fenetre.blit(niveau_txt, (LARGEUR//2 - niveau_txt.get_width()//2, 12))
         if nb_joueurs==2:
             txt2 = font.render(f"Score J2 : {scores[1]}", True, JAUNE)
             fenetre.blit(txt2, (LARGEUR-200, 12))
