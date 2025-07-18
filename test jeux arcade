@@ -2,11 +2,31 @@ import pygame
 import random
 import sys
 
+# Initialisation de Pygame et du module audio
 pygame.init()
+pygame.mixer.init()
+
 LARGEUR, HAUTEUR = 700, 900
 fenetre = pygame.display.set_mode((LARGEUR, HAUTEUR))
 pygame.display.set_caption("Arcade Shooter Next Gen")
 clock = pygame.time.Clock()
+
+# --- Sons ---
+try:
+    son_ambiance = pygame.mixer.Sound("ambiance.ogg")
+except Exception:
+    son_ambiance = None
+try:
+    son_missile = pygame.mixer.Sound("missile.wav")
+except Exception:
+    son_missile = None
+try:
+    son_boss = pygame.mixer.Sound("boss.wav")
+except Exception:
+    son_boss = None
+
+if son_ambiance:
+    son_ambiance.play(loops=-1)
 
 # --- Couleurs ---
 FOND = (15, 15, 40)
@@ -85,6 +105,29 @@ for i in range(1, 9):
     if img:
         explosions.append(img)
 
+# --- Radar ---
+def afficher_radar(joueurs, ennemis, boss, powerups):
+    radar_size = 120
+    radar = pygame.Rect(LARGEUR - radar_size - 10, 10, radar_size, radar_size)
+    pygame.draw.rect(fenetre, (40, 40, 60), radar, border_radius=4)
+    # origine au centre
+    for j in joueurs:
+        jx = radar.centerx + (j.centerx - LARGEUR/2) / (LARGEUR/2) * (radar_size/2 - 5)
+        jy = radar.centery + (j.centery - HAUTEUR/2) / (HAUTEUR/2) * (radar_size/2 - 5)
+        pygame.draw.circle(fenetre, VERT, (int(jx), int(jy)), 3)
+    for e in ennemis:
+        ex = radar.centerx + (e.centerx - LARGEUR/2) / (LARGEUR/2) * (radar_size/2 - 5)
+        ey = radar.centery + (e.centery - HAUTEUR/2) / (HAUTEUR/2) * (radar_size/2 - 5)
+        pygame.draw.circle(fenetre, ROUGE, (int(ex), int(ey)), 2)
+    if boss:
+        bx = radar.centerx + (boss.centerx - LARGEUR/2) / (LARGEUR/2) * (radar_size/2 - 5)
+        by = radar.centery + (boss.centery - HAUTEUR/2) / (HAUTEUR/2) * (radar_size/2 - 5)
+        pygame.draw.circle(fenetre, JAUNE, (int(bx), int(by)), 4)
+    for p in powerups:
+        px = radar.centerx + (p.centerx - LARGEUR/2) / (LARGEUR/2) * (radar_size/2 - 5)
+        py = radar.centery + (p.centery - HAUTEUR/2) / (HAUTEUR/2) * (radar_size/2 - 5)
+        pygame.draw.circle(fenetre, BLEU, (int(px), int(py)), 2)
+
 # --- Contrôles clavier ---
 controles1 = {"left":pygame.K_LEFT, "right":pygame.K_RIGHT, "up":pygame.K_UP, "down":pygame.K_DOWN, "tir":pygame.K_SPACE}
 controles2 = {"left":pygame.K_q, "right":pygame.K_d, "up":pygame.K_z, "down":pygame.K_s, "tir":pygame.K_LSHIFT}
@@ -148,6 +191,15 @@ def jeu_arcade(nb_joueurs=1, manette=None):
     tirs = [[] for _ in vaisseaux]
     vitesses = [8 for _ in vaisseaux]
 
+    # --- Powerups et boss ---
+    powerups = []
+    temps_dernier_powerup = 0
+
+    boss = None
+    boss_vie = 0
+    boss_tirs = []
+    temps_dernier_tir_boss = 0
+
     # --- Ennemis
     ennemis = []
     sprites_ennemis = [sprite_e1, sprite_e2]
@@ -170,6 +222,18 @@ def jeu_arcade(nb_joueurs=1, manette=None):
             ennemis.append(ennemi)
             temps_dernier_ennemi = pygame.time.get_ticks()
 
+        # Apparition rare d'un powerup
+        if random.random() < 0.002:
+            x = random.randint(20, LARGEUR-40)
+            powerups.append(pygame.Rect(x, -20, 20, 20))
+
+        # Apparition du boss lorsque le score total est élevé
+        if boss is None and sum(scores) >= 300:
+            boss = pygame.Rect(LARGEUR//2 - 80, -120, 160, 100)
+            boss_vie = 40
+            if son_boss:
+                son_boss.play()
+
         # --- Gestion événements
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -188,6 +252,8 @@ def jeu_arcade(nb_joueurs=1, manette=None):
         if touches[controles1["tir"]]:
             if len(tirs[0])==0 or tirs[0][-1].y < vaisseaux[0].y-50:
                 tirs[0].append(pygame.Rect(vaisseaux[0].centerx-6, vaisseaux[0].y-25, 12, 24))
+                if son_missile:
+                    son_missile.play()
 
         # --- Joueur 2 (Clavier ou manette)
         if nb_joueurs==2:
@@ -200,6 +266,8 @@ def jeu_arcade(nb_joueurs=1, manette=None):
                 if manette.get_button(0):
                     if len(tirs[1])==0 or tirs[1][-1].y < vaisseaux[1].y-50:
                         tirs[1].append(pygame.Rect(vaisseaux[1].centerx-6, vaisseaux[1].y-25, 12, 24))
+                        if son_missile:
+                            son_missile.play()
             else:
                 if touches[controles2["left"]]: dx2 -= vitesses[1]
                 if touches[controles2["right"]]: dx2 += vitesses[1]
@@ -210,6 +278,8 @@ def jeu_arcade(nb_joueurs=1, manette=None):
                 if touches[controles2["tir"]]:
                     if len(tirs[1])==0 or tirs[1][-1].y < vaisseaux[1].y-50:
                         tirs[1].append(pygame.Rect(vaisseaux[1].centerx-6, vaisseaux[1].y-25, 12, 24))
+                        if son_missile:
+                            son_missile.play()
 
         # --- Affichage vaisseaux
         if sprite_v1:
@@ -251,6 +321,58 @@ def jeu_arcade(nb_joueurs=1, manette=None):
             if ennemi.top > HAUTEUR:
                 ennemis.remove(ennemi)
 
+        # --- Powerups ---
+        for p in list(powerups):
+            p.y += 4
+            pygame.draw.rect(fenetre, VERT, p, border_radius=4)
+            for idx_j, v in enumerate(vaisseaux):
+                if v.colliderect(p):
+                    scores[idx_j] += 50
+                    powerups.remove(p)
+                    break
+            if p.top > HAUTEUR and p in powerups:
+                powerups.remove(p)
+
+        # --- Boss et ses tirs ---
+        if boss:
+            if boss.y < 50:
+                boss.y += 2
+            target = vaisseaux[0].centerx
+            if boss.centerx < target:
+                boss.x += 3
+            elif boss.centerx > target:
+                boss.x -= 3
+            boss.x = max(0, min(LARGEUR - boss.width, boss.x))
+            pygame.draw.rect(fenetre, JAUNE, boss, border_radius=8)
+
+            if pygame.time.get_ticks() - temps_dernier_tir_boss > 1000:
+                boss_tirs.append(pygame.Rect(boss.centerx-8, boss.bottom, 16, 24))
+                temps_dernier_tir_boss = pygame.time.get_ticks()
+
+            for idx_j, tlist in enumerate(tirs):
+                for tir in list(tlist):
+                    if boss.colliderect(tir):
+                        boss_vie -= 1
+                        tirs[idx_j].remove(tir)
+                        if boss_vie <= 0:
+                            explosions_actives.append({"pos": (boss.x, boss.y), "frame": 0})
+                            boss_tirs.clear()
+                            boss = None
+                            scores[idx_j] += 200
+                            break
+
+        for btir in list(boss_tirs):
+            btir.y += 8
+            pygame.draw.rect(fenetre, ROUGE, btir)
+            for v in vaisseaux:
+                if v.colliderect(btir):
+                    running = False
+            if btir.top > HAUTEUR:
+                boss_tirs.remove(btir)
+
+        # --- Radar ---
+        afficher_radar(vaisseaux, ennemis, boss, powerups)
+
         # --- Affichage explosions animées
         for exp in list(explosions_actives):
             if exp["frame"] < len(explosions):
@@ -266,6 +388,9 @@ def jeu_arcade(nb_joueurs=1, manette=None):
         if nb_joueurs==2:
             txt2 = font.render(f"Score J2 : {scores[1]}", True, JAUNE)
             fenetre.blit(txt2, (LARGEUR-200, 12))
+        if boss:
+            barre = pygame.Rect(16, 50, boss_vie*3, 10)
+            pygame.draw.rect(fenetre, ROUGE, barre)
 
         pygame.display.update()
         if touches[pygame.K_ESCAPE]:
