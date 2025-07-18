@@ -1,0 +1,278 @@
+import pygame
+import random
+import sys
+
+pygame.init()
+LARGEUR, HAUTEUR = 700, 900
+fenetre = pygame.display.set_mode((LARGEUR, HAUTEUR))
+pygame.display.set_caption("Arcade Shooter Next Gen")
+clock = pygame.time.Clock()
+
+# --- Couleurs ---
+FOND = (15, 15, 40)
+BLANC = (245, 245, 245)
+JAUNE = (255, 230, 90)
+VIOLET = (160, 90, 250)
+ROUGE = (255, 60, 80)
+BLEU = (120, 180, 255)
+VERT = (90, 250, 120)
+
+# --- Utilitaires ---
+def charger_sprite(nom, taille):
+    try:
+        img = pygame.image.load(nom).convert_alpha()
+        return pygame.transform.smoothscale(img, taille)
+    except Exception as e:
+        print(f"Erreur chargement {nom} : {e}")
+        return None
+
+# --- Chargement planètes (parallaxe) ---
+planetes = []
+for i in range(1, 10):
+    img = charger_sprite(f"planete{i}.png", (80, 80))
+    if img:
+        planetes.append(img)
+
+def generer_planetes_vivantes():
+    planfond = []
+    for i, pl in enumerate(planetes):
+        x = random.randint(0, LARGEUR-80)
+        y = random.randint(0, HAUTEUR-80)
+        speed = 0.4 + i * 0.25
+        planfond.append([pl, x, y, speed])
+    return planfond
+
+def afficher_planetes(planfond):
+    for pf in planfond:
+        pf[2] += pf[3]
+        if pf[2] > HAUTEUR:
+            pf[1] = random.randint(0, LARGEUR-80)
+            pf[2] = -80
+        fenetre.blit(pf[0], (pf[1], pf[2]))
+
+# --- Etoiles (parallaxe simple) ---
+def generer_etoiles_parallax():
+    etoiles = []
+    for plan in range(1, 4):
+        nb = [60, 30, 16][plan-1]
+        vitesse = [0.8, 1.8, 3.5][plan-1]
+        couleur = [(220,220,220), (150,150,255), (120,80,170)][plan-1]
+        for _ in range(nb):
+            x = random.randint(0, LARGEUR)
+            y = random.randint(0, HAUTEUR)
+            rayon = random.randint(1, plan+2)
+            etoiles.append([x, y, rayon, vitesse, couleur, plan])
+    return etoiles
+
+def afficher_etoiles_parallax(etoiles):
+    for e in etoiles:
+        e[1] += e[3]
+        if e[1] > HAUTEUR:
+            e[0] = random.randint(0, LARGEUR)
+            e[1] = 0
+        pygame.draw.circle(fenetre, e[4], (int(e[0]), int(e[1])), e[2])
+
+# --- Sprites joueurs & ennemis ---
+sprite_v1 = charger_sprite("vaisseau1.png", (64,48))
+sprite_v2 = charger_sprite("vaisseau2.png", (64,48))
+sprite_e1 = charger_sprite("ennemi1.png", (56,48))
+sprite_e2 = charger_sprite("ennemi2.png", (56,48))
+
+# --- Sprites explosions ---
+explosions = []
+for i in range(1, 9):
+    img = charger_sprite(f"explosion{i}.png", (64, 64))
+    if img:
+        explosions.append(img)
+
+# --- Contrôles clavier ---
+controles1 = {"left":pygame.K_LEFT, "right":pygame.K_RIGHT, "up":pygame.K_UP, "down":pygame.K_DOWN, "tir":pygame.K_SPACE}
+controles2 = {"left":pygame.K_q, "right":pygame.K_d, "up":pygame.K_z, "down":pygame.K_s, "tir":pygame.K_LSHIFT}
+
+def menu_accueil():
+    font_titre = pygame.font.SysFont("Arial", 60, bold=True)
+    font_menu = pygame.font.SysFont("Arial", 38)
+    font_hint = pygame.font.SysFont("Arial", 28)
+    etoiles_menu = generer_etoiles_parallax()
+    planetes_menu = generer_planetes_vivantes()
+    choix = 0
+    while True:
+        clock.tick(60)
+        fenetre.fill(FOND)
+        afficher_planetes(planetes_menu)
+        afficher_etoiles_parallax(etoiles_menu)
+        titre = font_titre.render("ARCADE SHOOTER", True, JAUNE)
+        fenetre.blit(titre, (LARGEUR//2 - titre.get_width()//2, 160))
+        options = [
+            "→ 1 Joueur (Clavier)",
+            "→ 2 Joueurs (Clavier + Manette ou clavier)"
+        ]
+        for i, opt in enumerate(options):
+            color = VIOLET if i == choix else BLANC
+            txt = font_menu.render(opt, True, color)
+            fenetre.blit(txt, (LARGEUR//2 - txt.get_width()//2, 320 + i*60))
+        info = font_hint.render("↑ ↓ pour choisir, Entrée pour valider", True, BLANC)
+        fenetre.blit(info, (LARGEUR//2 - info.get_width()//2, 520))
+        pygame.display.update()
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    pygame.quit(); sys.exit()
+                if event.key == pygame.K_UP:
+                    choix = (choix-1)%2
+                if event.key == pygame.K_DOWN:
+                    choix = (choix+1)%2
+                if event.key == pygame.K_RETURN:
+                    return choix
+
+def detecter_manette():
+    pygame.joystick.init()
+    if pygame.joystick.get_count() > 0:
+        manette = pygame.joystick.Joystick(0)
+        manette.init()
+        return manette
+    return None
+
+def jeu_arcade(nb_joueurs=1, manette=None):
+    etoiles = generer_etoiles_parallax()
+    planetes_vivantes = generer_planetes_vivantes()
+    vaisseaux = [
+        pygame.Rect(LARGEUR // 2 - 35, HAUTEUR - 100, 64, 48)
+    ]
+    if nb_joueurs==2:
+        vaisseaux.append(pygame.Rect(LARGEUR // 2 + 35, HAUTEUR - 200, 64, 48))
+
+    scores = [0 for _ in vaisseaux]
+    tirs = [[] for _ in vaisseaux]
+    vitesses = [8 for _ in vaisseaux]
+
+    # --- Ennemis
+    ennemis = []
+    sprites_ennemis = [sprite_e1, sprite_e2]
+    temps_dernier_ennemi = 0
+
+    # --- Explosions animées
+    explosions_actives = []  # {"pos": (x, y), "frame": 0}
+
+    running = True
+    while running:
+        clock.tick(60)
+        fenetre.fill(FOND)
+        afficher_planetes(planetes_vivantes)
+        afficher_etoiles_parallax(etoiles)
+
+        # Apparition d’un ennemi toutes les 1.1s
+        if pygame.time.get_ticks() - temps_dernier_ennemi > 1100:
+            x = random.randint(0, LARGEUR-56)
+            ennemi = pygame.Rect(x, -60, 56, 48)
+            ennemis.append(ennemi)
+            temps_dernier_ennemi = pygame.time.get_ticks()
+
+        # --- Gestion événements
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit()
+
+        touches = pygame.key.get_pressed()
+
+        # --- Joueur 1 (Clavier)
+        dx1 = dy1 = 0
+        if touches[controles1["left"]]: dx1 -= vitesses[0]
+        if touches[controles1["right"]]: dx1 += vitesses[0]
+        if touches[controles1["up"]]: dy1 -= vitesses[0]
+        if touches[controles1["down"]]: dy1 += vitesses[0]
+        vaisseaux[0].x = max(0, min(LARGEUR-64, vaisseaux[0].x + dx1))
+        vaisseaux[0].y = max(0, min(HAUTEUR-48, vaisseaux[0].y + dy1))
+        if touches[controles1["tir"]]:
+            if len(tirs[0])==0 or tirs[0][-1].y < vaisseaux[0].y-50:
+                tirs[0].append(pygame.Rect(vaisseaux[0].centerx-6, vaisseaux[0].y-25, 12, 24))
+
+        # --- Joueur 2 (Clavier ou manette)
+        if nb_joueurs==2:
+            dx2 = dy2 = 0
+            if manette:
+                dx2 = int(manette.get_axis(0)*vitesses[1])
+                dy2 = int(manette.get_axis(1)*vitesses[1])
+                vaisseaux[1].x = max(0, min(LARGEUR-64, vaisseaux[1].x + dx2))
+                vaisseaux[1].y = max(0, min(HAUTEUR-48, vaisseaux[1].y + dy2))
+                if manette.get_button(0):
+                    if len(tirs[1])==0 or tirs[1][-1].y < vaisseaux[1].y-50:
+                        tirs[1].append(pygame.Rect(vaisseaux[1].centerx-6, vaisseaux[1].y-25, 12, 24))
+            else:
+                if touches[controles2["left"]]: dx2 -= vitesses[1]
+                if touches[controles2["right"]]: dx2 += vitesses[1]
+                if touches[controles2["up"]]: dy2 -= vitesses[1]
+                if touches[controles2["down"]]: dy2 += vitesses[1]
+                vaisseaux[1].x = max(0, min(LARGEUR-64, vaisseaux[1].x + dx2))
+                vaisseaux[1].y = max(0, min(HAUTEUR-48, vaisseaux[1].y + dy2))
+                if touches[controles2["tir"]]:
+                    if len(tirs[1])==0 or tirs[1][-1].y < vaisseaux[1].y-50:
+                        tirs[1].append(pygame.Rect(vaisseaux[1].centerx-6, vaisseaux[1].y-25, 12, 24))
+
+        # --- Affichage vaisseaux
+        if sprite_v1:
+            fenetre.blit(sprite_v1, (vaisseaux[0].x, vaisseaux[0].y))
+        else:
+            pygame.draw.rect(fenetre, VIOLET, vaisseaux[0], border_radius=8)
+        if nb_joueurs==2:
+            if sprite_v2:
+                fenetre.blit(sprite_v2, (vaisseaux[1].x, vaisseaux[1].y))
+            else:
+                pygame.draw.rect(fenetre, ROUGE, vaisseaux[1], border_radius=8)
+
+        # --- Affichage tirs joueurs
+        for i, tlist in enumerate(tirs):
+            for tir in tlist:
+                tir.y -= 13
+                color = BLEU if i==0 else JAUNE
+                pygame.draw.rect(fenetre, color, tir)
+            tirs[i] = [t for t in tlist if t.y > -40]
+
+        # --- Affichage ennemis & collisions
+        for i, ennemi in enumerate(list(ennemis)):
+            ennemi.y += 6
+            s = sprites_ennemis[i%2]
+            if s:
+                fenetre.blit(s, (ennemi.x, ennemi.y))
+            else:
+                pygame.draw.rect(fenetre, ROUGE, ennemi, border_radius=8)
+            # Collisions avec tirs joueurs
+            for idx_j, tlist in enumerate(tirs):
+                for tir in list(tlist):
+                    if ennemi.colliderect(tir):
+                        scores[idx_j] += 10
+                        tirs[idx_j].remove(tir)
+                        ennemis.remove(ennemi)
+                        # Déclencher explosion animée
+                        explosions_actives.append({"pos": (ennemi.x, ennemi.y), "frame": 0})
+                        break
+            if ennemi.top > HAUTEUR:
+                ennemis.remove(ennemi)
+
+        # --- Affichage explosions animées
+        for exp in list(explosions_actives):
+            if exp["frame"] < len(explosions):
+                fenetre.blit(explosions[exp["frame"]], exp["pos"])
+                exp["frame"] += 1
+            else:
+                explosions_actives.remove(exp)
+
+        # --- Score individuel
+        font = pygame.font.SysFont("Arial", 28)
+        txt = font.render(f"Score J1 : {scores[0]}", True, BLANC)
+        fenetre.blit(txt, (16, 12))
+        if nb_joueurs==2:
+            txt2 = font.render(f"Score J2 : {scores[1]}", True, JAUNE)
+            fenetre.blit(txt2, (LARGEUR-200, 12))
+
+        pygame.display.update()
+        if touches[pygame.K_ESCAPE]:
+            running = False
+
+# ====== PROGRAMME PRINCIPAL ======
+while True:
+    choix = menu_accueil()
+    manette = detecter_manette() if choix==1 else None
+    jeu_arcade(nb_joueurs=2 if choix==1 else 1, manette=manette)
